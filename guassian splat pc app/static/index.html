@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capture to NeRF</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <section class="card upload" id="upload-card">
+    <div class="env-warning" id="env-warning" hidden>
+      <span><b>NerfStudio not found.</b> Run <code>setup_nerfstudio.ps1</code> to install it — uploads still work, training is disabled until then.</span>
+      <button type="button" id="env-recheck">Re-check</button>
+    </div>
+    <h1>Manual Capture Upload</h1>
+    <form id="upload-form" autocomplete="off">
+      <div class="files">
+        <label class="file" data-field="video">
+          <span class="file-label">Video.mp4</span>
+          <span class="file-row"><span class="file-btn">Choose File</span><span class="file-name">No File Chosen</span></span>
+          <input type="file" name="video" accept=".mp4,.mov,video/*">
+        </label>
+        <label class="file" data-field="poses">
+          <span class="file-label">Poses.jsonl</span>
+          <span class="file-row"><span class="file-btn">Choose File</span><span class="file-name">No File Chosen</span></span>
+          <input type="file" name="poses" accept=".jsonl,.json,.txt">
+        </label>
+        <label class="file" data-field="intrinsics">
+          <span class="file-label">Intrinsics.json (optional)</span>
+          <span class="file-row"><span class="file-btn">Choose File</span><span class="file-name">No File Chosen</span></span>
+          <input type="file" name="intrinsics" accept=".json">
+        </label>
+        <label class="file" data-field="imu">
+          <span class="file-label">IMU.json (optional)</span>
+          <span class="file-row"><span class="file-btn">Choose File</span><span class="file-name">No File Chosen</span></span>
+          <input type="file" name="imu" accept=".json,.jsonl">
+        </label>
+      </div>
+      <button type="submit" class="primary" id="upload-btn">Upload &amp; Prepare</button>
+      <span class="hint" id="upload-hint">Tip: drop the whole capture folder's files here.</span>
+    </form>
+  </section>
+
+  <section class="card table-card">
+    <h2>SESSIONS</h2>
+    <table>
+      <colgroup><col class="c-id"><col class="c-status"><col class="c-frames"><col class="c-created"><col class="c-actions"></colgroup>
+      <thead><tr><th>Session</th><th>Status</th><th>Frames</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="active-body"></tbody>
+    </table>
+    <p class="empty" id="active-empty">No sessions yet — upload a capture above.</p>
+  </section>
+
+  <section class="card table-card">
+    <h2>FINISHED</h2>
+    <table>
+      <colgroup><col class="c-id"><col class="c-status"><col class="c-frames"><col class="c-created"><col class="c-actions"></colgroup>
+      <thead><tr><th>Session</th><th>Status</th><th>Frames</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="finished-body"></tbody>
+    </table>
+    <p class="empty" id="finished-empty">Finished scans appear here, ready to export as a 3D mesh.</p>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

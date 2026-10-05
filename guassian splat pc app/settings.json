@@ -1,0 +1,10 @@
+{
+  "nerfstudio_bin": "",
+  "conda_env": "nerfstudio",
+  "max_iterations": 30000,
+  "viewer_port": 7007,
+  "max_frames": 300,
+  "blur_drop_ratio": 0.35,
+  "jpeg_quality": 95,
+  "export_method": "poisson"
+}
