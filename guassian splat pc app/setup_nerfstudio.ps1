@@ -7,7 +7,7 @@ $EnvName = "nerfstudio"
 function Find-Conda {
     $cmd = Get-Command conda -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    foreach ($base in @($env:USERPROFILE, $env:LOCALAPPDATA, $env:ProgramData)) {
+        foreach ($base in @("C:\cs302.3", $env:USERPROFILE, $env:LOCALAPPDATA, $env:ProgramData)) {
         foreach ($dist in @("miniconda3", "anaconda3", "miniforge3")) {
             $p = Join-Path $base "$dist\Scripts\conda.exe"
             if (Test-Path $p) { return $p }
@@ -46,7 +46,8 @@ Write-Host "Installing NerfStudio..." -ForegroundColor Cyan
 # NerfStudio falls back to a slower pure-PyTorch implementation if it's missing.
 if (Get-Command nvcc -ErrorAction SilentlyContinue) {
     Write-Host "CUDA toolkit found - building tiny-cuda-nn (optional, can take 10+ minutes)..." -ForegroundColor Cyan
-    & $py -m pip install ninja git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+    & $py -m pip install ninja wheel
+    & $py -m pip install --no-build-isolation git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
     if ($LASTEXITCODE -ne 0) { Write-Warning "tiny-cuda-nn build failed - training will still work, just slower." }
 } else {
     Write-Host "Skipping tiny-cuda-nn (no CUDA toolkit). Training works, just slower." -ForegroundColor Yellow

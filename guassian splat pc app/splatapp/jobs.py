@@ -9,7 +9,7 @@ import traceback
 import zipfile
 from pathlib import Path
 
-from . import nsenv, prepare, store
+from . import nsenv, prepare, roombox, store
 from . import settings as settings_mod
 
 _gpu_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
@@ -243,6 +243,10 @@ def _last_error(sid: str) -> str:
 
 # ---------------------------------------------------------------- mesh export
 
+def _fmt(values) -> list:
+    return [f"{v:.6f}" for v in values]
+
+
 def _run_export(sid: str):
     s = store.get(sid)
     config = Path(s["config"]) if s.get("config") else find_config(sid)
@@ -253,6 +257,13 @@ def _run_export(sid: str):
     first = cfg.get("export_method", "poisson")
     methods = [first] + [m for m in ("poisson", "tsdf") if m != first]
     export_root = store.session_dir(sid) / "exports"
+    try:
+        box = roombox.export_box(store.session_dir(sid) / "dataset", config, cfg)
+    except (OSError, ValueError, KeyError) as e:
+        box = None
+        store.append_log(sid, f"WARNING: could not compute the room crop box ({e}); exporting uncropped.")
+    if box:
+        store.append_log(sid, box["summary"])
 
     for method in methods:
         out = export_root / method
@@ -263,6 +274,14 @@ def _run_export(sid: str):
         args = [nsenv.tool("ns-export"), method, "--load-config", str(config), "--output-dir", str(out)]
         if method == "poisson":
             args += ["--normal-method", "model_output"]
+            if box:
+                args += ["--obb-center", *_fmt(box["obb_center"]),
+                         "--obb-rotation", *_fmt(box["obb_rotation"]),
+                         "--obb-scale", *_fmt(box["obb_scale"])]
+        elif box:  # tsdf only takes an axis-aligned box
+            args += ["--use-bounding-box", "True",
+                     "--bounding-box-min", *_fmt(box["aabb_min"]),
+                     "--bounding-box-max", *_fmt(box["aabb_max"])]
 
         def on_line(line, method=method):
             pct = _PCT_RE.search(line)

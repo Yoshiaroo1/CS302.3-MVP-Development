@@ -29,7 +29,9 @@ Double-click `run.bat` (or `python app.py`). `python app.py --browser` opens it 
 2. **▶ Train** – runs `ns-train nerfacto` (one job at a time on the GPU). Progress, ETA and a
    link to NerfStudio's live viewer appear under the row; click the session ID for the full log.
 3. **⤓ Export** – in the Finished table, runs `ns-export poisson` (falls back to `tsdf`) and
-   zips the textured `.obj` + `.ply`. Click again to save the zip.
+   zips the textured `.obj` + `.ply`. Click again to save the zip. The mesh is cropped to a
+   room-sized box (`room_size_m`, default 10 × 7 × 3 m) placed around the camera path, with the
+   floor `camera_height_m` below the phone; set `room_size_m` to `null` to export uncropped.
 
 Session data lives in `%LOCALAPPDATA%\CaptureToNeRF\sessions` (kept out of OneDrive);
 override with the `CAPTURE_NERF_DATA` env var. Tunables (iterations, frame cap, blur filter,

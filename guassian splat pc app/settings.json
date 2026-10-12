@@ -3,8 +3,11 @@
   "conda_env": "nerfstudio",
   "max_iterations": 30000,
   "viewer_port": 7007,
-  "max_frames": 300,
+  "max_frames": 600,
   "blur_drop_ratio": 0.35,
   "jpeg_quality": 95,
-  "export_method": "poisson"
+  "export_method": "poisson",
+  "room_size_m": [10, 7, 3],
+  "room_box_margin_m": 0.25,
+  "camera_height_m": 1.5
 }

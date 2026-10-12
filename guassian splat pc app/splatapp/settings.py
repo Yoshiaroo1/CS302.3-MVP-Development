@@ -18,6 +18,11 @@ DEFAULTS = {
     "jpeg_quality": 95,
     # Mesh export: "poisson" (needs normals, trained with predict-normals) or "tsdf".
     "export_method": "poisson",
+    # Crop the exported mesh to a room of this size in metres: [length, width, height].
+    # Length follows the longest direction of the camera path. Set to null to export uncropped.
+    "room_size_m": [10, 7, 3],
+    "room_box_margin_m": 0.25,    # extra space on every side so walls/floor/ceiling aren't clipped
+    "camera_height_m": 1.5,       # typical phone height above the floor while capturing
 }
 
 
