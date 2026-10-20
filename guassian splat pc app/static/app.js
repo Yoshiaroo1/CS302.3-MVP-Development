@@ -142,7 +142,8 @@
 
   // ------------------------------------------------------------------ rendering
   function pill(s) {
-    if (s.status === "complete" && s.has_mesh) return '<span class="pill meshready">Mesh Ready</span>';
+    if (s.status === "complete" && s.has_mesh)
+      return `<span class="pill meshready">${s.export_kind === "mesh" ? "Mesh" : "Splat"} Ready</span>`;
     return `<span class="pill ${s.status}">${LABEL[s.status] || s.status}</span>`;
   }
 
@@ -156,12 +157,13 @@
     if (ACTIVE.has(s.status)) {
       if (s.status === "queued" || s.status === "running") return iconBtn("stop", "stop", "Stop training") + del;
       const canTrain = (s.status === "ready" || s.status === "failed") && s.frames && state.nerfstudio.found;
-      const why = !state.nerfstudio.found ? "Install NerfStudio to train" : s.frames ? "Train nerfacto" : "Not ready yet";
+      const why = !state.nerfstudio.found ? "Install NerfStudio to train" : s.frames ? "Train" : "Not ready yet";
       return iconBtn("train", "play", why, { disabled: !canTrain }) + del;
     }
-    if (s.status === "exporting") return iconBtn("stop", "spinner", "Exporting mesh… click to cancel") + del;
-    if (s.has_mesh) return iconBtn("save", "download", "Save mesh (.zip)", { cls: "ready-dl" }) + del;
-    return iconBtn("export", "download", "Export 3D mesh") + del;
+    const mesh = s.export_kind === "mesh";
+    if (s.status === "exporting") return iconBtn("stop", "spinner", `Exporting ${mesh ? "mesh" : "splat"}… click to cancel`) + del;
+    if (s.has_mesh) return iconBtn("save", "download", mesh ? "Save mesh (.zip)" : "Save splat for Unity (.ply)", { cls: "ready-dl" }) + del;
+    return iconBtn("export", "download", mesh ? "Export 3D mesh" : "Export Gaussian splat for Unity") + del;
   }
 
   function detail(s) {
@@ -238,7 +240,7 @@
           break;
         case "export":
           await api(`/api/sessions/${sid}/export`, { method: "POST" });
-          toast("Exporting mesh — this can take a few minutes.");
+          toast("Exporting — this can take a few minutes.");
           break;
         case "save":
           if (window.pywebview && window.pywebview.api) {

@@ -37,11 +37,11 @@ class JsApi:
         import webview
         s = store.get(sid)
         if not s or not s.get("mesh_zip") or not Path(s["mesh_zip"]).exists():
-            return {"ok": False, "error": "Mesh not exported yet."}
+            return {"ok": False, "error": "Nothing exported yet."}
         src = Path(s["mesh_zip"])
         dialog = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or webview.SAVE_DIALOG
-        result = self.window.create_file_dialog(dialog, save_filename=src.name,
-                                                file_types=("Zip archive (*.zip)",))
+        kind = "Gaussian splat (*.ply)" if src.suffix.lower() == ".ply" else "Zip archive (*.zip)"
+        result = self.window.create_file_dialog(dialog, save_filename=src.name, file_types=(kind,))
         if not result:
             return {"ok": False, "cancelled": True}
         dest = result if isinstance(result, str) else result[0]

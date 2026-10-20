@@ -22,6 +22,7 @@ def _public(s: dict) -> dict:
             "viewer_url", "eta", "pose_offset")
     out = {k: s.get(k) for k in keep}
     out["has_mesh"] = bool(s.get("mesh_zip") and Path(s["mesh_zip"]).exists())
+    out["export_kind"] = "mesh" if (s.get("config") or "").replace("\\", "/").count("/nerfacto/") else "splat"
     return out
 
 

@@ -8,15 +8,34 @@ DEFAULTS = {
     "nerfstudio_bin": "",
     # Conda env name searched for during auto-detection.
     "conda_env": "nerfstudio",
-    # nerfacto training length. 30000 is NerfStudio's default; 10000 is a quick preview.
+    # "splatfacto" (Gaussian splat .ply for UnityGaussianSplatting) or "nerfacto" (mesh export).
+    "train_method": "splatfacto",
+    # Training length. 30000 is NerfStudio's default; 10000 is a quick preview.
     "max_iterations": 30000,
+    # Triangulate a sparse point cloud from the phone poses to initialise splatfacto.
+    "seed_points": True,
+    # splatfacto training: penalise needle-shaped splats, refine phone poses ("off" to disable),
+    # and cache images in system RAM ("cpu") or VRAM ("gpu").
+    "splat_scale_regularization": True,
+    "splat_camera_optimizer": "SO3xR3",
+    "splat_cache_images": "cpu",
+    # Export cleanup: drop splats whose longest axis is more than this many times the middle one
+    # (needles; flat discs on surfaces are kept), or that are fainter than this opacity. 0 = keep.
+    "splat_max_needle_ratio": 15,
+    "splat_min_opacity": 0.05,
+    # Camera-path fragments (metres): splats closer than clear_m to where the phone moved are always
+    # removed; those closer than suspect_m are removed unless a seed point (real surface) is within
+    # ~protect_m. 0 disables.
+    "splat_path_clear_m": 0.1,
+    "splat_path_suspect_m": 0.3,
+    "splat_seed_protect_m": 0.1,
     # Port for NerfStudio's live web viewer while training.
     "viewer_port": 7007,
     # Frame selection.
-    "max_frames": 300,            # uniformly subsample above this many frames
+    "max_frames": 600,          # uniformly subsample above this many frames
     "blur_drop_ratio": 0.35,      # drop frames sharper than this fraction of the median (0 = keep all)
     "jpeg_quality": 95,
-    # Mesh export: "poisson" (needs normals, trained with predict-normals) or "tsdf".
+    # Mesh export (nerfacto only): "poisson" (needs normals, trained with predict-normals) or "tsdf".
     "export_method": "poisson",
     # Crop the exported mesh to a room of this size in metres: [length, width, height].
     # Length follows the longest direction of the camera path. Set to null to export uncropped.

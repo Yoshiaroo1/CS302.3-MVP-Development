@@ -1,7 +1,9 @@
 # Capture to NeRF
 
 Desktop app that turns a phone capture (`video.mp4` + `poses.jsonl` [+ `intrinsics.json`, `imu.json`])
-into a NerfStudio **nerfacto** scan and exports it as a 3D mesh.
+into a NerfStudio **splatfacto** Gaussian splat and exports a `.ply` for
+[UnityGaussianSplatting](https://github.com/aras-p/UnityGaussianSplatting)
+(set `train_method` to `nerfacto` in `settings.json` for the older mesh pipeline).
 
 ## Setup (once)
 
@@ -26,13 +28,26 @@ Double-click `run.bat` (or `python app.py`). `python app.py --browser` opens it 
    are dropped, and a NerfStudio `transforms.json` is written. The phone's ARCore poses use the
    same OpenGL camera convention as NerfStudio, so no COLMAP step is needed. The frame↔pose
    offset is measured from the video itself (feature-matched rotations vs. pose rotations).
-2. **▶ Train** – runs `ns-train nerfacto` (one job at a time on the GPU). Progress, ETA and a
+   A sparse seed point cloud (`sparse_pc.ply`) is triangulated from SIFT matches between nearby
+   frames using the known poses, so splatfacto doesn't start from random points.
+2. **▶ Train** – runs `ns-train splatfacto` (one job at a time on the GPU). Progress, ETA and a
    link to NerfStudio's live viewer appear under the row; click the session ID for the full log.
-3. **⤓ Export** – in the Finished table, runs `ns-export poisson` (falls back to `tsdf`) and
-   zips the textured `.obj` + `.ply`. Click again to save the zip. The mesh is cropped to a
+3. **⤓ Export** – in the Finished table, runs `ns-export gaussian-splat`, then converts the
+   splats to real-world metres in Unity's left-handed, Y-up axes (Z mirrored, rotations and
+   spherical harmonics adjusted to match). Click again to save `<session>_unity.ply`, then in Unity
+   use *Tools → Gaussian Splats → Create GaussianSplatAsset* on it. (nerfacto sessions export a
+   Poisson mesh instead, falling back to `tsdf`.) The export is cropped to a
    room-sized box (`room_size_m`, default 10 × 7 × 3 m) placed around the camera path, with the
    floor `camera_height_m` below the phone; set `room_size_m` to `null` to export uncropped.
 
 Session data lives in `%LOCALAPPDATA%\CaptureToNeRF\sessions` (kept out of OneDrive);
 override with the `CAPTURE_NERF_DATA` env var. Tunables (iterations, frame cap, blur filter,
 export method) are in `settings.json`.
+
+Splat quality settings: splatfacto trains with scale regularisation (stops needle-shaped splats),
+pose refinement (`SO3xR3`, corrects small ARCore pose errors) and images cached in system RAM so
+600 frames fit on an 8 GB GPU. On export, splats more than `splat_max_needle_ratio` times longer
+than they are wide, or fainter than `splat_min_opacity`, are removed (0 disables either).
+Fragments along the camera path are removed too: anything within `splat_path_clear_m` (10 cm) of
+where the phone moved, and anything within `splat_path_suspect_m` (30 cm) that has no seed point
+(a triangulated real surface) within `splat_seed_protect_m`, so objects filmed up close survive.

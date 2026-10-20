@@ -42,6 +42,12 @@ Write-Host "Installing CUDA PyTorch (cu118)..." -ForegroundColor Cyan
 Write-Host "Installing NerfStudio..." -ForegroundColor Cyan
 & $py -m pip install nerfstudio "numpy<2"
 
+# splatfacto's gsplat otherwise JIT-compiles its CUDA kernels on first use, which fails on Windows
+# with CUDA 11.8 (a cub header clashes with the 'small' macro from rpcndr.h). Use the official
+# prebuilt wheel for torch 2.1 + cu118 + Python 3.10 instead.
+Write-Host "Installing prebuilt gsplat (splatfacto)..." -ForegroundColor Cyan
+& $py -m pip install --force-reinstall --no-deps "https://github.com/nerfstudio-project/gsplat/releases/download/v1.4.0/gsplat-1.4.0%2Bpt21cu118-cp310-cp310-win_amd64.whl"
+
 # tiny-cuda-nn makes nerfacto ~3-5x faster but needs the CUDA 11.8 toolkit + VS 2022 C++ build tools.
 # NerfStudio falls back to a slower pure-PyTorch implementation if it's missing.
 if (Get-Command nvcc -ErrorAction SilentlyContinue) {
@@ -53,6 +59,6 @@ if (Get-Command nvcc -ErrorAction SilentlyContinue) {
     Write-Host "Skipping tiny-cuda-nn (no CUDA toolkit). Training works, just slower." -ForegroundColor Yellow
 }
 
-& $py -c "import torch, nerfstudio; print('torch', torch.__version__, 'CUDA', torch.cuda.is_available())"
+& $py -c "import torch, nerfstudio; from gsplat.cuda._backend import _C; print('torch', torch.__version__, 'CUDA', torch.cuda.is_available(), 'gsplat kernels', _C is not None)"
 Write-Host "`nDone. NerfStudio is in: $envPath" -ForegroundColor Green
 Write-Host "Start the app with run.bat - it will find this env automatically."

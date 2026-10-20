@@ -13,6 +13,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .seedpoints import SeedPoints
+
 # OpenGL camera (NerfStudio/ARCore) <-> OpenCV camera (x right, y down, z forward)
 _GL_TO_CV = np.diag([1.0, -1.0, -1.0])
 
@@ -249,6 +251,7 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
     quality = int(cfg.get("jpeg_quality", 95))
     wanted = {i: j for i, j, _ in candidates}
     frame_entries = []
+    seeds = SeedPoints(K, scale) if cfg.get("seed_points", True) else None
     for i, frame in enumerate(iter_frames(video)):
         if i not in wanted:
             continue
@@ -260,9 +263,11 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
         c2w[:3, :3] = quat_to_rot(p["quat_xyzw"])
         c2w[:3, 3] = p["pos"]
         frame_entries.append({"file_path": f"images/{name}", "transform_matrix": c2w.tolist()})
+        if seeds:
+            seeds.add(frame, c2w)
         if len(frame_entries) % 25 == 0:
             progress(65 + 30 * len(frame_entries) / len(wanted),
-                     f"Writing images ({len(frame_entries)}/{len(wanted)})…")
+                     f"Writing images{' + seed points' if seeds else ''} ({len(frame_entries)}/{len(wanted)})…")
 
     transforms = {
         "camera_model": "OPENCV",
@@ -270,6 +275,13 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
         "k1": 0.0, "k2": 0.0, "p1": 0.0, "p2": 0.0,
         "frames": frame_entries,
     }
+    if seeds:
+        n_pts = seeds.write_ply(out / "sparse_pc.ply")
+        if n_pts >= 1000:
+            transforms["ply_file_path"] = "sparse_pc.ply"
+            log(f"Seed point cloud: {n_pts:,} triangulated points.")
+        else:
+            log(f"Only {n_pts} seed points triangulated; splatfacto will start from random points.")
     (out / "transforms.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
     log(f"Dataset ready: {len(frame_entries)} frames → {out}")
     return {"frames": len(frame_entries), "frames_total": n_frames, "pose_offset": offset,

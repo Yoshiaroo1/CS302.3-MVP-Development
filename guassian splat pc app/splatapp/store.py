@@ -22,7 +22,7 @@ _INTERRUPTED = {
     "uploading": ("failed", "Upload interrupted — delete and re-upload."),
     "queued": ("ready", "Training was queued when the app closed — press play to start."),
     "running": ("ready", "Training was interrupted when the app closed — press play to restart."),
-    "exporting": ("complete", "Mesh export was interrupted — press download to retry."),
+    "exporting": ("complete", "Export was interrupted — press download to retry."),
 }
 
 _ALPHABET = string.ascii_letters + string.digits
