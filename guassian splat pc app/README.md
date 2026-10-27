@@ -30,6 +30,11 @@ Double-click `run.bat` (or `python app.py`). `python app.py --browser` opens it 
    offset is measured from the video itself (feature-matched rotations vs. pose rotations).
    A sparse seed point cloud (`sparse_pc.ply`) is triangulated from SIFT matches between nearby
    frames using the known poses, so splatfacto doesn't start from random points.
+   Tracking jumps (ARCore snapping its pose faster than a hand can move) are re-joined; when the
+   video has more than `max_frames` frames, the sharpest of each run is kept instead of evenly spaced
+   ones; and a capture report warns when the video is short,
+   doesn't walk the room, turns fast, stays at one height or misses the ceiling. The warnings show
+   under the session and in its log.
 2. **▶ Train** – runs `ns-train splatfacto` (one job at a time on the GPU). Progress, ETA and a
    link to NerfStudio's live viewer appear under the row; click the session ID for the full log.
 3. **⤓ Export** – in the Finished table, runs `ns-export gaussian-splat`, then converts the

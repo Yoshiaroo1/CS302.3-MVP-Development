@@ -17,9 +17,14 @@ from . import prepare
 
 
 def load_path(session_dir: Path, spacing: float = 0.02) -> np.ndarray:
-    """All tracked phone positions (not just training frames), thinned to ~spacing apart."""
-    _, poses = prepare.parse_poses(Path(session_dir) / "raw" / "poses.jsonl")
-    P = np.array([p["pos"] for p in poses if p.get("tracking", "TRACKING") == "TRACKING"], float)
+    """All tracked phone positions (not just training frames), thinned to ~spacing apart.
+    Uses the tracking-jump-corrected path saved by prepare when available."""
+    saved = Path(session_dir) / "dataset" / "camera_path.npy"
+    if saved.exists():
+        P = np.load(saved)
+    else:
+        _, poses = prepare.parse_poses(Path(session_dir) / "raw" / "poses.jsonl")
+        P = np.array([p["pos"] for p in poses if p.get("tracking", "TRACKING") == "TRACKING"], float)
     keep, last = [0], P[0]
     for i in range(1, len(P)):
         if np.linalg.norm(P[i] - last) >= spacing:

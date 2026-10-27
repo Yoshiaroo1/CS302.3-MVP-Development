@@ -44,7 +44,10 @@ def _run_prepare(sid: str):
     log("=== Preparing dataset ===")
     try:
         info = prepare.prepare(store.session_dir(sid), settings_mod.load(), log, progress)
-        store.update(sid, status="ready", progress=None, message=f"{info['frames']} of {info['frames_total']} frames usable — press play to train.",
+        msg = f"{info['frames']} of {info['frames_total']} frames usable — press play to train."
+        if info.get("warnings"):
+            msg += " Capture issues: " + " ".join(info["warnings"])
+        store.update(sid, status="ready", progress=None, message=msg,
                      frames=info["frames"], frames_total=info["frames_total"],
                      pose_offset=info["pose_offset"], pose_error_deg=info["pose_error_deg"])
     except prepare.PrepareError as e:
@@ -203,6 +206,10 @@ def _run_train(sid: str):
             args += ["--pipeline.model.use-scale-regularization", "True"]
         # Let training refine the ARCore poses; small pose errors show up as ghosting and haze.
         args += ["--pipeline.model.camera-optimizer.mode", cfg.get("splat_camera_optimizer", "SO3xR3")]
+        # Per-image colour/exposure correction: phones re-expose while recording, which otherwise
+        # trains into blotchy, view-dependent colour floaters. Export keeps the neutral colours.
+        if cfg.get("splat_bilateral_grid", False):
+            args += ["--pipeline.model.use-bilateral-grid", "True"]
         # Keep training images in system RAM rather than VRAM so more frames fit on an 8 GB GPU.
         args += ["--pipeline.datamanager.cache-images", cfg.get("splat_cache_images", "cpu")]
     args += ["nerfstudio-data", "--downscale-factor", "1"]

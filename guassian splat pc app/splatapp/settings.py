@@ -19,6 +19,9 @@ DEFAULTS = {
     "splat_scale_regularization": True,
     "splat_camera_optimizer": "SO3xR3",
     "splat_cache_images": "cpu",
+    # Per-frame exposure/white-balance correction during training. Off by default: the learned
+    # per-frame corrections let the base colours drift (a grey cast in Unity, which has no correction).
+    "splat_bilateral_grid": False,
     # Export cleanup: drop splats whose longest axis is more than this many times the middle one
     # (needles; flat discs on surfaces are kept), or that are fainter than this opacity. 0 = keep.
     "splat_max_needle_ratio": 15,
@@ -32,8 +35,10 @@ DEFAULTS = {
     # Port for NerfStudio's live web viewer while training.
     "viewer_port": 7007,
     # Frame selection.
-    "max_frames": 600,          # uniformly subsample above this many frames
-    "blur_drop_ratio": 0.35,      # drop frames sharper than this fraction of the median (0 = keep all)
+    "max_frames": 600,            # cap on training frames
+    "sharp_window": 1,            # keep the sharpest of every N frames; raised automatically when the video
+                                  # has more than max_frames, so long videos drop their blurriest frames
+    "blur_drop_ratio": 0.35,      # drop frames blurrier than this fraction of the median sharpness (0 = keep all)
     "jpeg_quality": 95,
     # Mesh export (nerfacto only): "poisson" (needs normals, trained with predict-normals) or "tsdf".
     "export_method": "poisson",

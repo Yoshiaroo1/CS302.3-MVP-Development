@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import capture
 from .seedpoints import SeedPoints
 
 # OpenGL camera (NerfStudio/ARCore) <-> OpenCV camera (x right, y down, z forward)
@@ -224,6 +225,17 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
     del gray
     log(f"Using frame i ↔ pose row i{offset:+d}.")
 
+    progress(50, "Checking tracking…")
+    times = capture.pose_times(poses)
+    tracked = np.array([p.get("tracking", "TRACKING") == "TRACKING" for p in poses])
+    c2ws, jumps = capture.fix_tracking_jumps(capture.pose_matrices(poses), times)
+    lines, warnings = capture.quality_report(c2ws, times, tracked, jumps, cfg.get("room_size_m"))
+    for line in lines + [f"WARNING: {w}" for w in warnings]:
+        log(line)
+    # full (jump-corrected) phone path, used to remove camera-path fragments at export
+    out.mkdir(parents=True, exist_ok=True)
+    np.save(out / "camera_path.npy", c2ws[tracked, :3, 3])
+
     progress(55, "Selecting sharp, tracked frames…")
     candidates = []
     for i in range(n_frames):
@@ -241,10 +253,11 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
             log(f"Dropped {len(candidates) - len(sharp_enough)} blurry frames.")
             candidates = sharp_enough
     max_frames = int(cfg.get("max_frames", 0) or 0)
-    if max_frames and len(candidates) > max_frames:
-        idx = np.linspace(0, len(candidates) - 1, max_frames).round().astype(int)
-        candidates = [candidates[k] for k in sorted(set(idx))]
-        log(f"Subsampled to {len(candidates)} frames.")
+    window = max(int(cfg.get("sharp_window", 1) or 1),
+                 -(-len(candidates) // max_frames) if max_frames else 1)
+    if window > 1:
+        candidates = capture.select_sharpest(candidates, window)
+        log(f"Kept the sharpest of every {window} frames: {len(candidates)} frames.")
 
     progress(65, "Writing images…")
     img_dir.mkdir(parents=True, exist_ok=True)
@@ -258,10 +271,7 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
         name = f"frame_{i:05d}.jpg"
         if not cv2.imwrite(str(img_dir / name), frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
             raise PrepareError(f"Could not write {img_dir / name}.")
-        p = poses[wanted[i]]
-        c2w = np.eye(4)
-        c2w[:3, :3] = quat_to_rot(p["quat_xyzw"])
-        c2w[:3, 3] = p["pos"]
+        c2w = c2ws[wanted[i]]
         frame_entries.append({"file_path": f"images/{name}", "transform_matrix": c2w.tolist()})
         if seeds:
             seeds.add(frame, c2w)
@@ -285,4 +295,4 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
     (out / "transforms.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
     log(f"Dataset ready: {len(frame_entries)} frames → {out}")
     return {"frames": len(frame_entries), "frames_total": n_frames, "pose_offset": offset,
-            "pose_error_deg": err}
+            "pose_error_deg": err, "warnings": warnings}
