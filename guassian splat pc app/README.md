@@ -35,6 +35,13 @@ Double-click `run.bat` (or `python app.py`). `python app.py --browser` opens it 
    ones; and a capture report warns when the video is short,
    doesn't walk the room, turns fast, stays at one height or misses the ceiling. The warnings show
    under the session and in its log.
+   Finally the phone poses **and lens** are bundle-adjusted with COLMAP (pycolmap, in the NerfStudio
+   env): frames are matched with their time neighbours and with frames from other passes that look
+   at the same place, and everything is aligned back onto the phone's metric, gravity-up frame.
+   ARCore poses drift between passes and the reported lens can be well off for the video, which
+   splats show as doubled geometry; on one capture this cut the cross-pass error from ~14 px to
+   ~2 px. Adds several minutes; `colmap_refine: false` skips it. The phone poses are kept in
+   `transforms_phone.json`, and `colmap_log.txt` has COLMAP's output.
 2. **▶ Train** – runs `ns-train splatfacto` (one job at a time on the GPU). Progress, ETA and a
    link to NerfStudio's live viewer appear under the row; click the session ID for the full log.
 3. **⤓ Export** – in the Finished table, runs `ns-export gaussian-splat`, then converts the

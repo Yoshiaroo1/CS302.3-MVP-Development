@@ -14,7 +14,8 @@ import cv2
 import numpy as np
 
 from . import capture
-from .seedpoints import SeedPoints
+from . import refine
+from .seedpoints import SeedPoints, write_points_ply
 
 # OpenGL camera (NerfStudio/ARCore) <-> OpenCV camera (x right, y down, z forward)
 _GL_TO_CV = np.diag([1.0, -1.0, -1.0])
@@ -293,6 +294,31 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
         else:
             log(f"Only {n_pts} seed points triangulated; splatfacto will start from random points.")
     (out / "transforms.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
+
+    if cfg.get("colmap_refine", True):
+        result = refine.run(out, log, progress)
+        if result:
+            refined, points, intrinsics, _ = result
+            (out / "transforms_phone.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
+            transforms.update(intrinsics)        # lens refined by bundle adjustment (OPENCV model)
+            row_of = {f"frame_{i:05d}.jpg": j for i, j in wanted.items()}
+            kept = [e for e in frame_entries if Path(e["file_path"]).name in refined]
+            for e in kept:
+                e["transform_matrix"] = refined[Path(e["file_path"]).name].tolist()
+            if len(kept) < len(frame_entries):
+                log(f"Dropped {len(frame_entries) - len(kept)} frames COLMAP couldn't place.")
+            transforms["frames"] = frame_entries = kept
+            if points is not None and len(points) >= 1000:
+                n_pts = write_points_ply(out / "sparse_pc.ply", points[:, :3], points[:, 3:])
+                transforms["ply_file_path"] = "sparse_pc.ply"
+                log(f"Seed point cloud replaced by {n_pts:,} bundle-adjusted COLMAP points.")
+            # carry each training frame's correction to the nearby rows of the full phone path
+            rows = np.array(sorted(row_of[n] for n in refined if n in row_of))
+            delta = {row_of[n]: refined[n] @ np.linalg.inv(c2ws[row_of[n]]) for n in refined if n in row_of}
+            nearest = rows[np.clip(np.searchsorted(rows, np.arange(len(c2ws))), 0, len(rows) - 1)]
+            corrected = np.array([delta[r] @ m for r, m in zip(nearest, c2ws)])
+            np.save(out / "camera_path.npy", corrected[tracked, :3, 3])
+            (out / "transforms.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
     log(f"Dataset ready: {len(frame_entries)} frames → {out}")
     return {"frames": len(frame_entries), "frames_total": n_frames, "pose_offset": offset,
             "pose_error_deg": err, "warnings": warnings}

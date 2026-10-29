@@ -31,7 +31,8 @@ class JsApi:
     """Exposed to the page as window.pywebview.api (native window only)."""
 
     def __init__(self):
-        self.window = None
+        # Underscore keeps pywebview from exposing (and recursively walking) the native window to JS.
+        self._window = None
 
     def save_mesh(self, sid):
         import webview
@@ -41,7 +42,7 @@ class JsApi:
         src = Path(s["mesh_zip"])
         dialog = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or webview.SAVE_DIALOG
         kind = "Gaussian splat (*.ply)" if src.suffix.lower() == ".ply" else "Zip archive (*.zip)"
-        result = self.window.create_file_dialog(dialog, save_filename=src.name, file_types=(kind,))
+        result = self._window.create_file_dialog(dialog, save_filename=src.name, file_types=(kind,))
         if not result:
             return {"ok": False, "cancelled": True}
         dest = result if isinstance(result, str) else result[0]
@@ -79,7 +80,7 @@ def main():
             raise ImportError
         import webview
         api = JsApi()
-        api.window = webview.create_window(TITLE, url, js_api=api, width=1280, height=900, min_size=(760, 600))
+        api._window = webview.create_window(TITLE, url, js_api=api, width=1280, height=900, min_size=(760, 600))
         webview.start()
     except ImportError:
         edge = find_edge()

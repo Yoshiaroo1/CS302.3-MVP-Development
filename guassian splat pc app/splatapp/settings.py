@@ -14,6 +14,9 @@ DEFAULTS = {
     "max_iterations": 30000,
     # Triangulate a sparse point cloud from the phone poses to initialise splatfacto.
     "seed_points": True,
+    # Bundle-adjust the phone poses with COLMAP (pycolmap in the NerfStudio env) before training.
+    # Fixes drift between passes that shows up as doubled geometry. Adds several minutes to prepare.
+    "colmap_refine": True,
     # splatfacto training: penalise needle-shaped splats, refine phone poses ("off" to disable),
     # and cache images in system RAM ("cpu") or VRAM ("gpu").
     "splat_scale_regularization": True,

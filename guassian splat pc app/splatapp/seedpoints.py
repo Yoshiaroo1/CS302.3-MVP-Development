@@ -71,16 +71,21 @@ class SeedPoints:
     def write_ply(self, path) -> int:
         if not self.xyz:
             return 0
-        xyz, rgb = np.concatenate(self.xyz), np.concatenate(self.rgb)
-        if len(xyz) > self.max_points:
-            idx = np.random.default_rng(0).choice(len(xyz), self.max_points, replace=False)
-            xyz, rgb = xyz[idx], rgb[idx]
-        header = ("ply\nformat ascii 1.0\n"
-                  f"element vertex {len(xyz)}\n"
-                  "property float x\nproperty float y\nproperty float z\n"
-                  "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n")
-        with open(path, "w", encoding="ascii") as f:
-            f.write(header)
-            for (x, y, z), (r, g, b) in zip(xyz, rgb):
-                f.write(f"{x:.5f} {y:.5f} {z:.5f} {r} {g} {b}\n")
-        return len(xyz)
+        return write_points_ply(path, np.concatenate(self.xyz), np.concatenate(self.rgb), self.max_points)
+
+
+def write_points_ply(path, xyz, rgb, max_points=200_000) -> int:
+    """ASCII PLY (x y z red green blue) as NerfStudio's ply_file_path expects."""
+    if len(xyz) > max_points:
+        idx = np.random.default_rng(0).choice(len(xyz), max_points, replace=False)
+        xyz, rgb = xyz[idx], rgb[idx]
+    rgb = np.clip(np.asarray(rgb), 0, 255).astype(int)
+    header = ("ply\nformat ascii 1.0\n"
+              f"element vertex {len(xyz)}\n"
+              "property float x\nproperty float y\nproperty float z\n"
+              "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n")
+    with open(path, "w", encoding="ascii") as f:
+        f.write(header)
+        for (x, y, z), (r, g, b) in zip(xyz, rgb):
+            f.write(f"{x:.5f} {y:.5f} {z:.5f} {r} {g} {b}\n")
+    return len(xyz)

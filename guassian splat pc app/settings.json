@@ -4,6 +4,7 @@
   "train_method": "splatfacto",
   "max_iterations": 30000,
   "seed_points": true,
+  "colmap_refine": true,
   "splat_scale_regularization": true,
   "splat_camera_optimizer": "SO3xR3",
   "splat_cache_images": "cpu",

@@ -48,6 +48,10 @@ Write-Host "Installing NerfStudio..." -ForegroundColor Cyan
 Write-Host "Installing prebuilt gsplat (splatfacto)..." -ForegroundColor Cyan
 & $py -m pip install --force-reinstall --no-deps "https://github.com/nerfstudio-project/gsplat/releases/download/v1.4.0/gsplat-1.4.0%2Bpt21cu118-cp310-cp310-win_amd64.whl"
 
+# COLMAP's Python bindings: bundle-adjusts the phone poses and lens during dataset preparation.
+Write-Host "Installing pycolmap (pose refinement)..." -ForegroundColor Cyan
+& $py -m pip install --no-deps "pycolmap==4.2.1"
+
 # tiny-cuda-nn makes nerfacto ~3-5x faster but needs the CUDA 11.8 toolkit + VS 2022 C++ build tools.
 # NerfStudio falls back to a slower pure-PyTorch implementation if it's missing.
 if (Get-Command nvcc -ErrorAction SilentlyContinue) {
@@ -59,6 +63,6 @@ if (Get-Command nvcc -ErrorAction SilentlyContinue) {
     Write-Host "Skipping tiny-cuda-nn (no CUDA toolkit). Training works, just slower." -ForegroundColor Yellow
 }
 
-& $py -c "import torch, nerfstudio; from gsplat.cuda._backend import _C; print('torch', torch.__version__, 'CUDA', torch.cuda.is_available(), 'gsplat kernels', _C is not None)"
+& $py -c "import torch, nerfstudio; from gsplat.cuda._backend import _C; import pycolmap; print('torch', torch.__version__, 'CUDA', torch.cuda.is_available(), 'gsplat kernels', _C is not None, 'pycolmap', pycolmap.__version__)"
 Write-Host "`nDone. NerfStudio is in: $envPath" -ForegroundColor Green
 Write-Host "Start the app with run.bat - it will find this env automatically."
