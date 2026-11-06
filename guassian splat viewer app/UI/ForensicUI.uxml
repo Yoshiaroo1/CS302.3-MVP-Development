@@ -1,0 +1,151 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="ForensicUI.uss" />
+    <ui:VisualElement name="app" class="app">
+
+        <!-- ===== Top bar ===== -->
+        <ui:VisualElement name="topbar" class="topbar">
+            <ui:VisualElement class="brand">
+                <ui:VisualElement name="logo-slot" class="logo-slot" />
+                <ui:Label text="ForensicNeRF" class="brand-name" />
+            </ui:VisualElement>
+            <ui:VisualElement class="topbar-divider" />
+            <ui:VisualElement name="scene-button" class="scene-button btn" tooltip="Open a scan">
+                <ui:Label name="scene-label" text="Open scan..." class="scene-label" picking-mode="Ignore" />
+                <ui:VisualElement name="scene-caret" class="scene-caret" picking-mode="Ignore" />
+            </ui:VisualElement>
+            <ui:VisualElement class="flex-spacer" />
+            <ui:VisualElement name="mode-tabs" class="mode-tabs">
+                <ui:Label name="mode-orbit" text="Orbit" class="mode-tab btn" />
+                <ui:Label name="mode-measure" text="Measure" class="mode-tab btn" />
+                <ui:Label name="mode-annotate" text="Annotate" class="mode-tab btn" />
+                <ui:Label name="mode-compare" text="Compare" class="mode-tab btn" />
+            </ui:VisualElement>
+            <ui:VisualElement class="flex-spacer" />
+            <ui:Label name="export-button" text="Export" class="export-button btn" />
+            <ui:VisualElement class="topbar-divider" />
+            <ui:Label name="avatar-button" text="RH" class="avatar-button btn" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="body" class="body">
+
+            <!-- ===== Left tool strip ===== -->
+            <ui:VisualElement name="toolbar" class="toolbar">
+                <ui:VisualElement name="tool-select" class="tool-button btn" tooltip="Select / orbit" />
+                <ui:VisualElement name="tool-add" class="tool-button btn" tooltip="Add evidence marker" />
+                <ui:VisualElement name="tool-measure" class="tool-button btn" tooltip="Measure distance" />
+                <ui:VisualElement name="tool-crop" class="tool-button btn" tooltip="Crop scan" />
+                <ui:VisualElement name="tool-pin" class="tool-button btn" tooltip="Set orbit centre" />
+            </ui:VisualElement>
+
+            <!-- ===== 3D viewport (the camera renders behind this area) ===== -->
+            <ui:VisualElement name="viewport" class="viewport">
+                <ui:VisualElement name="overlay-slot" class="fill" picking-mode="Ignore" />
+                <ui:VisualElement name="marker-layer" class="fill" picking-mode="Ignore" />
+
+                <ui:VisualElement name="empty-state" class="empty-state" picking-mode="Ignore">
+                    <ui:Label text="No scan loaded" class="empty-title" picking-mode="Ignore" />
+                    <ui:Label text="Open a .ply, .spz or .sog Gaussian splat to begin." class="empty-sub" picking-mode="Ignore" />
+                    <ui:Label name="empty-open" text="Open scan" class="primary-button btn" />
+                </ui:VisualElement>
+
+                <ui:Label name="tool-hint" class="tool-hint" picking-mode="Ignore" />
+
+                <ui:VisualElement name="crop-panel" class="float-panel crop-panel">
+                    <ui:Label text="Crop" class="panel-title" />
+                    <ui:Toggle name="crop-enabled" label="Hide splats outside box" class="field" />
+                    <ui:MinMaxSlider name="crop-x" label="X" min-value="0.17" max-value="0.83" low-limit="0" high-limit="1" class="field" />
+                    <ui:MinMaxSlider name="crop-y" label="Y" min-value="0.17" max-value="0.83" low-limit="0" high-limit="1" class="field" />
+                    <ui:MinMaxSlider name="crop-z" label="Z" min-value="0.17" max-value="0.83" low-limit="0" high-limit="1" class="field" />
+                    <ui:VisualElement class="row-end">
+                        <ui:Label name="crop-reset" text="Reset box" class="ghost-button btn" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="compare-bar" class="float-panel compare-bar">
+                    <ui:Label text="Scan B" class="compare-caption" />
+                    <ui:Label name="compare-choose" text="Choose scan..." class="chip btn" />
+                    <ui:VisualElement class="compare-divider" />
+                    <ui:VisualElement class="segmented">
+                        <ui:Label name="compare-a" text="A" class="segment btn" />
+                        <ui:Label name="compare-b" text="B" class="segment btn" />
+                        <ui:Label name="compare-both" text="A + B" class="segment btn" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="gizmo-slot" class="gizmo-slot" />
+
+                <ui:VisualElement name="zoom-controls" class="zoom-controls">
+                    <ui:VisualElement name="zoom-in" class="zoom-button btn" tooltip="Zoom in" />
+                    <ui:VisualElement name="zoom-out" class="zoom-button btn" tooltip="Zoom out" />
+                </ui:VisualElement>
+
+                <ui:VisualElement name="loading" class="loading">
+                    <ui:Label name="loading-label" text="Loading scan..." class="loading-label" />
+                    <ui:VisualElement class="progress-track">
+                        <ui:VisualElement name="progress-fill" class="progress-fill" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="toast" class="toast">
+                    <ui:Label name="toast-label" class="toast-label" />
+                    <ui:Label name="toast-action" class="toast-action btn" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- ===== Right panel ===== -->
+            <ui:VisualElement name="sidepanel" class="sidepanel">
+                <ui:VisualElement class="side-tabs">
+                    <ui:Label name="tab-evidence" text="Evidence" class="side-tab btn" />
+                    <ui:Label name="tab-info" text="Scan Info" class="side-tab btn" />
+                </ui:VisualElement>
+
+                <ui:ScrollView name="evidence-page" class="side-page">
+                    <ui:VisualElement name="evidence-list" />
+                    <ui:Label name="evidence-empty" class="side-empty" />
+                    <ui:Label text="MEASUREMENTS" class="section-header" />
+                    <ui:VisualElement name="measure-list" />
+                    <ui:Label name="measure-empty" text="No measurements yet. Choose Measure and click two points on the scan." class="side-empty" />
+                </ui:ScrollView>
+
+                <ui:VisualElement name="evidence-details" class="details">
+                    <ui:VisualElement class="details-header">
+                        <ui:Label name="details-badge" text="01" class="badge badge-small" />
+                        <ui:Label name="details-coords" class="evidence-coords" />
+                    </ui:VisualElement>
+                    <ui:TextField name="ev-title" label="Title" class="field" />
+                    <ui:TextField name="ev-notes" label="Notes" multiline="true" class="field notes-field" />
+                    <ui:VisualElement class="row-end">
+                        <ui:Label name="ev-focus" text="Focus" class="ghost-button btn" />
+                        <ui:Label name="ev-delete" text="Delete" class="danger-button btn" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:ScrollView name="info-page" class="side-page">
+                    <ui:Label text="SCAN" class="section-header" />
+                    <ui:VisualElement name="info-rows" />
+
+                    <ui:Label text="VIEW" class="section-header" />
+                    <ui:VisualElement class="info-block">
+                        <ui:Slider name="near-clip" label="Near clip" low-value="0.01" high-value="3" value="0.3" show-input-field="true" class="field" />
+                        <ui:Toggle name="flip-toggle" label="Flip scan upright" class="field" />
+                        <ui:VisualElement class="row-start">
+                            <ui:Label name="frame-button" text="Frame scan (F)" class="ghost-button btn" />
+                            <ui:Label name="top-view-button" text="Top view" class="ghost-button btn" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <ui:Label text="SCALE CALIBRATION" class="section-header" />
+                    <ui:VisualElement class="info-block">
+                        <ui:Label name="scale-label" text="1 scan unit = 1 m" class="scale-label" />
+                        <ui:Label text="Measure something of known size, select that measurement in the Evidence tab, enter its real length and press Calibrate." class="help-text" />
+                        <ui:FloatField name="calib-length" label="Real length (m)" value="1" class="field" />
+                        <ui:VisualElement class="row-start">
+                            <ui:Label name="calibrate-button" text="Calibrate" class="primary-button btn" />
+                            <ui:Label name="reset-scale-button" text="Reset scale" class="ghost-button btn" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:ScrollView>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
