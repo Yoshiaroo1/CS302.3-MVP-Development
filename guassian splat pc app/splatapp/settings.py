@@ -1,7 +1,7 @@
 """User-editable settings, stored in settings.json next to app.py."""
 import json
 
-from . import SETTINGS_FILE
+from . import SETTINGS_FILE, audit
 
 DEFAULTS = {
     # Folder containing ns-train(.exe). Leave empty to auto-detect a conda env / venv.
@@ -65,4 +65,5 @@ def load() -> dict:
             SETTINGS_FILE.write_text(json.dumps(DEFAULTS, indent=2), encoding="utf-8")
         except OSError:
             pass
+    audit.record_settings(settings)
     return settings

@@ -9,7 +9,7 @@ import traceback
 import zipfile
 from pathlib import Path
 
-from . import nsenv, pathclean, prepare, roombox, store, unitysplat
+from . import audit, nsenv, pathclean, prepare, roombox, store, unitysplat
 from . import settings as settings_mod
 
 _gpu_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
@@ -42,6 +42,8 @@ def _run_prepare(sid: str):
 
     store.update(sid, status="preparing", progress=0, message="Preparing dataset…")
     log("=== Preparing dataset ===")
+    raw = store.session_dir(sid) / "raw"
+    audit.record("capture_files_hashed", sid, files=audit.files_summary(sorted(raw.glob("*"))))
     try:
         info = prepare.prepare(store.session_dir(sid), settings_mod.load(), log, progress)
         msg = f"{info['frames']} of {info['frames_total']} frames usable — press play to train."
@@ -328,6 +330,7 @@ def _run_export(sid: str):
                 for f in out.rglob("*"):
                     if f.is_file():
                         z.write(f, f.relative_to(out))
+            audit.record("export_created", sid, method=method, files=audit.files_summary([zip_path]))
             store.update(sid, status="complete", progress=None, mesh_zip=str(zip_path), mesh_dir=str(out),
                          message=f"Mesh exported ({method}) — click download to save it.")
             store.append_log(sid, f"Mesh written to {out}")
@@ -373,5 +376,7 @@ def _export_splat(sid: str, config: Path, export_root: Path, box):
     store.append_log(sid, f"Cleanup removed {stats['needles']:,} needle-shaped, {stats['faint']:,} "
                           f"near-transparent and {stats['path_fragments']:,} camera-path fragment splats.")
     store.append_log(sid, f"{n:,} splats written to {unity_ply} (metres, Unity left-handed Y-up).")
+    audit.record("export_created", sid, method="gaussian-splat", splats=stats,
+                 files=audit.files_summary([unity_ply]))
     store.update(sid, status="complete", progress=None, mesh_zip=str(unity_ply), mesh_dir=str(out),
                  message=f"Splat exported ({n:,} splats) — click download to save the .ply for Unity.")

@@ -52,6 +52,27 @@ Double-click `run.bat` (or `python app.py`). `python app.py --browser` opens it 
    room-sized box (`room_size_m`, default 10 × 7 × 3 m) placed around the camera path, with the
    floor `camera_height_m` below the phone; set `room_size_m` to `null` to export uncropped.
 
+## Audit log
+
+Interactions and changes are appended to a SQLite database, `%LOCALAPPDATA%\CaptureToNeRF\audit.db`
+(it follows `CAPTURE_NERF_DATA`, and outlives deleted sessions). Recorded: app open/close, uploads, scan
+starts, stops, exports, downloads and saves, opening a log or the export folder, deleting a session and
+rechecking NerfStudio (including rejected attempts), every job status change, SHA-256s of uploaded
+capture files and exports, `settings.json` edits, and changes to the app's own code files. The
+once-a-second status poll is not recorded.
+
+Each entry's SHA-256 covers its fields and the previous entry's hash, so editing or removing an entry
+is detectable. Check the chain or read recent entries with:
+```
+python -m splatapp.audit verify
+python -m splatapp.audit list 50
+```
+The chain is also checked at every startup. It detects tampering but can't prevent it: someone with
+write access could remove the newest entries, or rewrite the whole chain from the point they changed.
+Keep a copy of the latest hash somewhere else if you need to rule that out.
+
+## Data
+
 Session data lives in `%LOCALAPPDATA%\CaptureToNeRF\sessions` (kept out of OneDrive);
 override with the `CAPTURE_NERF_DATA` env var. Tunables (iterations, frame cap, blur filter,
 export method) are in `settings.json`.

@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from . import DATA_DIR
+from . import DATA_DIR, audit
 
 _lock = threading.RLock()
 _sessions: dict = {}
@@ -49,9 +49,11 @@ def load_all():
             except (OSError, ValueError):
                 continue
             if s.get("status") in _INTERRUPTED:
-                s["status"], s["message"] = _INTERRUPTED[s["status"]]
+                before = s["status"]
+                s["status"], s["message"] = _INTERRUPTED[before]
                 s["progress"] = None
                 _save(s)
+                audit.record("status_changed", s["id"], before=before, after=s["status"], message=s["message"])
             _sessions[s["id"]] = s
 
 
@@ -87,8 +89,11 @@ def update(sid: str, **fields):
         s = _sessions.get(sid)
         if not s:
             return None
+        before = s.get("status")
         s.update(fields)
         _save(s)
+        if s.get("status") != before:
+            audit.record("status_changed", sid, before=before, after=s.get("status"), message=s.get("message"))
         return dict(s)
 
 
