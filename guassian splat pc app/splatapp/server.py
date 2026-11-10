@@ -1,9 +1,10 @@
 """Local HTTP API + static UI, served to the desktop window."""
+import time
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_file, send_from_directory
 
-from . import STATIC_DIR, jobs, nsenv, store
+from . import STATIC_DIR, audit, jobs, nsenv, store
 
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 ** 3  # 8 GB uploads
@@ -17,12 +18,61 @@ UPLOAD_FIELDS = {
 }
 
 
+# endpoint -> audit action. Static files and the once-a-second /api/state poll aren't interactions.
+AUDITED = {
+    "index": "app_page_opened",
+    "upload": "scan_uploaded",
+    "train": "scan_started",
+    "stop": "job_stopped",
+    "export": "export_started",
+    "mesh": "export_downloaded",
+    "log": "log_viewed",
+    "delete": "session_deleted",
+}
+_LOG_REOPEN_GAP = 5.0       # the page polls an open log every 1.5 s; only record it being opened
+_log_polls: dict = {}
+
+
 def _public(s: dict) -> dict:
     keep = ("id", "status", "message", "progress", "frames", "frames_total", "created",
             "viewer_url", "eta", "pose_offset")
     out = {k: s.get(k) for k in keep}
     out["has_mesh"] = bool(s.get("mesh_zip") and Path(s["mesh_zip"]).exists())
+    out["export_kind"] = "mesh" if (s.get("config") or "").replace("\\", "/").count("/nerfacto/") else "splat"
     return out
+
+
+@app.after_request
+def audit_request(response):
+    try:
+        _audit(response)
+    except Exception as e:  # noqa: BLE001 — e.g. re-reading an oversized upload's form raises here
+        audit.record("audit_error", endpoint=request.endpoint, http_status=response.status_code, error=str(e))
+    return response
+
+
+def _audit(response):
+    action = AUDITED.get(request.endpoint)
+    if request.endpoint == "state" and request.args.get("refresh") == "1":
+        action = "nerfstudio_rechecked"
+    if not action:
+        return
+    sid = (request.view_args or {}).get("sid")
+    if action == "log_viewed":
+        now, last = time.monotonic(), _log_polls.get(sid, 0.0)
+        _log_polls[sid] = now
+        if now - last < _LOG_REOPEN_GAP:
+            return
+    details = {"http_status": response.status_code}
+    body = response.get_json(silent=True) if response.is_json else None
+    if isinstance(body, dict):
+        sid = sid or body.get("id")
+        if body.get("error"):
+            details["error"] = body["error"]
+    if action == "scan_uploaded":
+        details["files"] = {k: f.filename for k, f in request.files.items() if f.filename}
+        details["request_bytes"] = request.content_length
+    audit.record(action, sid, **details)
 
 
 @app.get("/")

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from werkzeug.serving import make_server
 
-from splatapp import APP_DATA, jobs, store
+from splatapp import APP_DATA, audit, jobs, settings, store
 from splatapp.server import app
 
 TITLE = "Capture to NeRF"
@@ -31,21 +31,24 @@ class JsApi:
     """Exposed to the page as window.pywebview.api (native window only)."""
 
     def __init__(self):
-        self.window = None
+        # Underscore keeps pywebview from exposing (and recursively walking) the native window to JS.
+        self._window = None
 
     def save_mesh(self, sid):
         import webview
         s = store.get(sid)
         if not s or not s.get("mesh_zip") or not Path(s["mesh_zip"]).exists():
-            return {"ok": False, "error": "Mesh not exported yet."}
+            return {"ok": False, "error": "Nothing exported yet."}
         src = Path(s["mesh_zip"])
         dialog = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or webview.SAVE_DIALOG
-        result = self.window.create_file_dialog(dialog, save_filename=src.name,
-                                                file_types=("Zip archive (*.zip)",))
+        kind = "Gaussian splat (*.ply)" if src.suffix.lower() == ".ply" else "Zip archive (*.zip)"
+        result = self._window.create_file_dialog(dialog, save_filename=src.name, file_types=(kind,))
         if not result:
+            audit.record("export_save_cancelled", sid)
             return {"ok": False, "cancelled": True}
         dest = result if isinstance(result, str) else result[0]
         shutil.copyfile(src, dest)
+        audit.record("export_saved", sid, path=dest, files=audit.files_summary([dest]))
         return {"ok": True, "path": dest}
 
     def open_folder(self, sid):
@@ -53,6 +56,7 @@ class JsApi:
         folder = s.get("mesh_dir") if s else None
         if folder and Path(folder).exists():
             os.startfile(folder)
+            audit.record("export_folder_opened", sid, path=folder)
             return True
         return False
 
@@ -67,6 +71,13 @@ def find_edge():
 
 
 def main():
+    check = audit.verify()
+    audit.record("app_started", argv=sys.argv[1:], integrity=check)
+    if not check["ok"]:
+        print(f"WARNING: audit log failed its integrity check at id {check['bad_id']}: {check['reason']}",
+              file=sys.stderr)
+    audit.record_code_version()
+    settings.load()
     store.load_all()
     port = free_port()
     server = make_server("127.0.0.1", port, app, threaded=True)
@@ -79,7 +90,7 @@ def main():
             raise ImportError
         import webview
         api = JsApi()
-        api.window = webview.create_window(TITLE, url, js_api=api, width=1280, height=900, min_size=(760, 600))
+        api._window = webview.create_window(TITLE, url, js_api=api, width=1280, height=900, min_size=(760, 600))
         webview.start()
     except ImportError:
         edge = find_edge()
@@ -99,6 +110,7 @@ def main():
     finally:
         jobs.shutdown()
         server.shutdown()
+        audit.record("app_closed")
 
 
 if __name__ == "__main__":

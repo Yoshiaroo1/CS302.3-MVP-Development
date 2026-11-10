@@ -13,6 +13,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import capture
+from . import refine
+from .seedpoints import SeedPoints, write_points_ply
+
 # OpenGL camera (NerfStudio/ARCore) <-> OpenCV camera (x right, y down, z forward)
 _GL_TO_CV = np.diag([1.0, -1.0, -1.0])
 
@@ -222,6 +226,17 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
     del gray
     log(f"Using frame i ↔ pose row i{offset:+d}.")
 
+    progress(50, "Checking tracking…")
+    times = capture.pose_times(poses)
+    tracked = np.array([p.get("tracking", "TRACKING") == "TRACKING" for p in poses])
+    c2ws, jumps = capture.fix_tracking_jumps(capture.pose_matrices(poses), times)
+    lines, warnings = capture.quality_report(c2ws, times, tracked, jumps, cfg.get("room_size_m"))
+    for line in lines + [f"WARNING: {w}" for w in warnings]:
+        log(line)
+    # full (jump-corrected) phone path, used to remove camera-path fragments at export
+    out.mkdir(parents=True, exist_ok=True)
+    np.save(out / "camera_path.npy", c2ws[tracked, :3, 3])
+
     progress(55, "Selecting sharp, tracked frames…")
     candidates = []
     for i in range(n_frames):
@@ -239,30 +254,31 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
             log(f"Dropped {len(candidates) - len(sharp_enough)} blurry frames.")
             candidates = sharp_enough
     max_frames = int(cfg.get("max_frames", 0) or 0)
-    if max_frames and len(candidates) > max_frames:
-        idx = np.linspace(0, len(candidates) - 1, max_frames).round().astype(int)
-        candidates = [candidates[k] for k in sorted(set(idx))]
-        log(f"Subsampled to {len(candidates)} frames.")
+    window = max(int(cfg.get("sharp_window", 1) or 1),
+                 -(-len(candidates) // max_frames) if max_frames else 1)
+    if window > 1:
+        candidates = capture.select_sharpest(candidates, window)
+        log(f"Kept the sharpest of every {window} frames: {len(candidates)} frames.")
 
     progress(65, "Writing images…")
     img_dir.mkdir(parents=True, exist_ok=True)
     quality = int(cfg.get("jpeg_quality", 95))
     wanted = {i: j for i, j, _ in candidates}
     frame_entries = []
+    seeds = SeedPoints(K, scale) if cfg.get("seed_points", True) else None
     for i, frame in enumerate(iter_frames(video)):
         if i not in wanted:
             continue
         name = f"frame_{i:05d}.jpg"
         if not cv2.imwrite(str(img_dir / name), frame, [cv2.IMWRITE_JPEG_QUALITY, quality]):
             raise PrepareError(f"Could not write {img_dir / name}.")
-        p = poses[wanted[i]]
-        c2w = np.eye(4)
-        c2w[:3, :3] = quat_to_rot(p["quat_xyzw"])
-        c2w[:3, 3] = p["pos"]
+        c2w = c2ws[wanted[i]]
         frame_entries.append({"file_path": f"images/{name}", "transform_matrix": c2w.tolist()})
+        if seeds:
+            seeds.add(frame, c2w)
         if len(frame_entries) % 25 == 0:
             progress(65 + 30 * len(frame_entries) / len(wanted),
-                     f"Writing images ({len(frame_entries)}/{len(wanted)})…")
+                     f"Writing images{' + seed points' if seeds else ''} ({len(frame_entries)}/{len(wanted)})…")
 
     transforms = {
         "camera_model": "OPENCV",
@@ -270,7 +286,39 @@ def prepare(session_dir: Path, cfg: dict, log, progress):
         "k1": 0.0, "k2": 0.0, "p1": 0.0, "p2": 0.0,
         "frames": frame_entries,
     }
+    if seeds:
+        n_pts = seeds.write_ply(out / "sparse_pc.ply")
+        if n_pts >= 1000:
+            transforms["ply_file_path"] = "sparse_pc.ply"
+            log(f"Seed point cloud: {n_pts:,} triangulated points.")
+        else:
+            log(f"Only {n_pts} seed points triangulated; splatfacto will start from random points.")
     (out / "transforms.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
+
+    if cfg.get("colmap_refine", True):
+        result = refine.run(out, log, progress)
+        if result:
+            refined, points, intrinsics, _ = result
+            (out / "transforms_phone.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
+            transforms.update(intrinsics)        # lens refined by bundle adjustment (OPENCV model)
+            row_of = {f"frame_{i:05d}.jpg": j for i, j in wanted.items()}
+            kept = [e for e in frame_entries if Path(e["file_path"]).name in refined]
+            for e in kept:
+                e["transform_matrix"] = refined[Path(e["file_path"]).name].tolist()
+            if len(kept) < len(frame_entries):
+                log(f"Dropped {len(frame_entries) - len(kept)} frames COLMAP couldn't place.")
+            transforms["frames"] = frame_entries = kept
+            if points is not None and len(points) >= 1000:
+                n_pts = write_points_ply(out / "sparse_pc.ply", points[:, :3], points[:, 3:])
+                transforms["ply_file_path"] = "sparse_pc.ply"
+                log(f"Seed point cloud replaced by {n_pts:,} bundle-adjusted COLMAP points.")
+            # carry each training frame's correction to the nearby rows of the full phone path
+            rows = np.array(sorted(row_of[n] for n in refined if n in row_of))
+            delta = {row_of[n]: refined[n] @ np.linalg.inv(c2ws[row_of[n]]) for n in refined if n in row_of}
+            nearest = rows[np.clip(np.searchsorted(rows, np.arange(len(c2ws))), 0, len(rows) - 1)]
+            corrected = np.array([delta[r] @ m for r, m in zip(nearest, c2ws)])
+            np.save(out / "camera_path.npy", corrected[tracked, :3, 3])
+            (out / "transforms.json").write_text(json.dumps(transforms, indent=2), encoding="utf-8")
     log(f"Dataset ready: {len(frame_entries)} frames → {out}")
     return {"frames": len(frame_entries), "frames_total": n_frames, "pose_offset": offset,
-            "pose_error_deg": err}
+            "pose_error_deg": err, "warnings": warnings}

@@ -1,4 +1,4 @@
-"""Capture-to-NeRF desktop app: phone captures -> NerfStudio nerfacto -> mesh."""
+"""Capture-to-NeRF desktop app: phone captures -> NerfStudio splatfacto -> Unity Gaussian splat."""
 import os
 from pathlib import Path
 

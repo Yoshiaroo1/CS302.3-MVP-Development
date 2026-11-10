@@ -9,7 +9,7 @@ import traceback
 import zipfile
 from pathlib import Path
 
-from . import nsenv, prepare, store
+from . import audit, nsenv, pathclean, prepare, roombox, store, unitysplat
 from . import settings as settings_mod
 
 _gpu_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
@@ -42,9 +42,14 @@ def _run_prepare(sid: str):
 
     store.update(sid, status="preparing", progress=0, message="Preparing dataset…")
     log("=== Preparing dataset ===")
+    raw = store.session_dir(sid) / "raw"
+    audit.record("capture_files_hashed", sid, files=audit.files_summary(sorted(raw.glob("*"))))
     try:
         info = prepare.prepare(store.session_dir(sid), settings_mod.load(), log, progress)
-        store.update(sid, status="ready", progress=None, message=f"{info['frames']} of {info['frames_total']} frames usable — press play to train.",
+        msg = f"{info['frames']} of {info['frames_total']} frames usable — press play to train."
+        if info.get("warnings"):
+            msg += " Capture issues: " + " ".join(info["warnings"])
+        store.update(sid, status="ready", progress=None, message=msg,
                      frames=info["frames"], frames_total=info["frames_total"],
                      pose_offset=info["pose_offset"], pose_error_deg=info["pose_error_deg"])
     except prepare.PrepareError as e:
@@ -181,9 +186,10 @@ def _run_train(sid: str):
 
     store.update(sid, status="running", progress=0, eta=None, viewer_url=None, config=None, mesh_zip=None,
                  message="Starting NerfStudio (first launch can take a minute)…")
-    store.append_log(sid, "=== Training nerfacto ===")
+    method = cfg.get("train_method", "splatfacto")
+    store.append_log(sid, f"=== Training {method} ===")
     args = [
-        nsenv.tool("ns-train"), "nerfacto",
+        nsenv.tool("ns-train"), method,
         "--data", str(sdir / "dataset"),
         "--output-dir", str(out_dir),
         "--experiment-name", sid,
@@ -192,11 +198,27 @@ def _run_train(sid: str):
         "--vis", "viewer",
         "--viewer.websocket-port", str(port),
         "--viewer.quit-on-train-completion", "True",
-        # Normals are needed for Poisson surface reconstruction at export time.
-        "--pipeline.model.predict-normals", "True",
-        "nerfstudio-data",
-        "--downscale-factor", "1",
     ]
+    if method == "nerfacto":
+        # Normals are needed for Poisson surface reconstruction at export time.
+        args += ["--pipeline.model.predict-normals", "True"]
+    elif method == "splatfacto":
+        # Penalise needle/sheet Gaussians (max/min axis ratio above max_gauss_ratio).
+        if cfg.get("splat_scale_regularization", True):
+            args += ["--pipeline.model.use-scale-regularization", "True"]
+        # Let training refine the ARCore poses; small pose errors show up as ghosting and haze.
+        args += ["--pipeline.model.camera-optimizer.mode", cfg.get("splat_camera_optimizer", "SO3xR3")]
+        # Per-image colour/exposure correction: phones re-expose while recording, which otherwise
+        # trains into blotchy, view-dependent colour floaters. Export keeps the neutral colours.
+        if cfg.get("splat_bilateral_grid", False):
+            args += ["--pipeline.model.use-bilateral-grid", "True"]
+        # Keep training images in system RAM rather than VRAM so more frames fit on an 8 GB GPU.
+        args += ["--pipeline.datamanager.cache-images", cfg.get("splat_cache_images", "cpu")]
+    args += ["nerfstudio-data", "--downscale-factor", "1"]
+    if method == "splatfacto":
+        # Keep the phone's metric Y-up axes (only recentre + uniform scale) so the exported
+        # splat can be mapped back to metres without rotating the spherical harmonics.
+        args += ["--orientation-method", "none"]
 
     def on_line(line):
         m = _STEP_RE.match(line)
@@ -212,7 +234,8 @@ def _run_train(sid: str):
             store.update(sid, viewer_url=u.group(0).replace("0.0.0.0", "localhost"))
         low = line.lower()
         for key, msg in (("loading data", "Loading images…"), ("caching", "Caching images on the GPU…"),
-                         ("setting up", "Setting up the model…"), ("saving checkpoints", "Saving checkpoint…")):
+                         ("setting up", "Setting up the model…"), ("saving checkpoints", "Saving checkpoint…"),
+                         ("setting up cuda", "Compiling gsplat CUDA kernels (first run only, can take 10+ minutes)…")):
             if key in low:
                 store.update(sid, message=msg)
 
@@ -229,8 +252,9 @@ def _run_train(sid: str):
         store.update(sid, status="failed", progress=None, eta=None, viewer_url=None,
                      message=f"Training failed (exit {code}). {tail}".strip())
         return
+    what = "a Unity splat" if method == "splatfacto" else "a mesh"
     store.update(sid, status="complete", progress=None, eta=None, viewer_url=None, config=str(config),
-                 message="Scan complete — press download to export a mesh.")
+                 message=f"Scan complete — press download to export {what}.")
     store.append_log(sid, f"Training finished. Config: {config}")
 
 
@@ -243,6 +267,10 @@ def _last_error(sid: str) -> str:
 
 # ---------------------------------------------------------------- mesh export
 
+def _fmt(values) -> list:
+    return [f"{v:.6f}" for v in values]
+
+
 def _run_export(sid: str):
     s = store.get(sid)
     config = Path(s["config"]) if s.get("config") else find_config(sid)
@@ -250,10 +278,22 @@ def _run_export(sid: str):
         store.update(sid, status="complete", message="No trained model found — re-train this session.")
         return
     cfg = settings_mod.load()
+    export_root = store.session_dir(sid) / "exports"
+    try:
+        box = roombox.export_box(store.session_dir(sid) / "dataset", config, cfg)
+    except (OSError, ValueError, KeyError) as e:
+        box = None
+        store.append_log(sid, f"WARNING: could not compute the room crop box ({e}); exporting uncropped.")
+    if box:
+        store.append_log(sid, box["summary"])
+
+    # outputs/<sid>/<method>/run/config.yml
+    if config.parent.parent.name == "splatfacto":
+        _export_splat(sid, config, export_root, box)
+        return
+
     first = cfg.get("export_method", "poisson")
     methods = [first] + [m for m in ("poisson", "tsdf") if m != first]
-    export_root = store.session_dir(sid) / "exports"
-
     for method in methods:
         out = export_root / method
         shutil.rmtree(out, ignore_errors=True)
@@ -263,6 +303,14 @@ def _run_export(sid: str):
         args = [nsenv.tool("ns-export"), method, "--load-config", str(config), "--output-dir", str(out)]
         if method == "poisson":
             args += ["--normal-method", "model_output"]
+            if box:
+                args += ["--obb-center", *_fmt(box["obb_center"]),
+                         "--obb-rotation", *_fmt(box["obb_rotation"]),
+                         "--obb-scale", *_fmt(box["obb_scale"])]
+        elif box:  # tsdf only takes an axis-aligned box
+            args += ["--use-bounding-box", "True",
+                     "--bounding-box-min", *_fmt(box["aabb_min"]),
+                     "--bounding-box-max", *_fmt(box["aabb_max"])]
 
         def on_line(line, method=method):
             pct = _PCT_RE.search(line)
@@ -282,6 +330,7 @@ def _run_export(sid: str):
                 for f in out.rglob("*"):
                     if f.is_file():
                         z.write(f, f.relative_to(out))
+            audit.record("export_created", sid, method=method, files=audit.files_summary([zip_path]))
             store.update(sid, status="complete", progress=None, mesh_zip=str(zip_path), mesh_dir=str(out),
                          message=f"Mesh exported ({method}) — click download to save it.")
             store.append_log(sid, f"Mesh written to {out}")
@@ -290,3 +339,44 @@ def _run_export(sid: str):
 
     store.update(sid, status="complete", progress=None,
                  message=f"Mesh export failed. {_last_error(sid)}")
+
+
+def _export_splat(sid: str, config: Path, export_root: Path, box):
+    out = export_root / "splat"
+    shutil.rmtree(out, ignore_errors=True)
+    store.update(sid, status="exporting", progress=None, message="Exporting Gaussian splat — starting…")
+    store.append_log(sid, "=== Exporting Gaussian splat ===")
+    args = [nsenv.tool("ns-export"), "gaussian-splat", "--load-config", str(config), "--output-dir", str(out)]
+    if box:
+        args += ["--obb-center", *_fmt(box["obb_center"]),
+                 "--obb-rotation", *_fmt(box["obb_rotation"]),
+                 "--obb-scale", *_fmt(box["obb_scale"])]
+
+    def on_line(line):
+        store.update(sid, message="Exporting Gaussian splat — " + re.sub(r"\s+", " ", line)[:90])
+
+    code = _run_process(sid, args, on_line)
+    if _was_cancelled(sid):
+        if store.get(sid):
+            store.update(sid, status="complete", progress=None, message="Export cancelled.")
+        return
+    raw = out / "splat.ply"
+    if code != 0 or not raw.exists():
+        store.update(sid, status="complete", progress=None,
+                     message=f"Splat export failed (exit {code}). {_last_error(sid)}".strip())
+        return
+    store.update(sid, message="Converting splat to Unity coordinates…")
+    unity_ply = out / f"{sid}_unity.ply"
+    cfg = settings_mod.load()
+    stats = unitysplat.convert(raw, unity_ply, config.parent / "dataparser_transforms.json",
+                               max_needle_ratio=float(cfg.get("splat_max_needle_ratio", 0) or 0),
+                               min_opacity=float(cfg.get("splat_min_opacity", 0) or 0),
+                               fragment_fn=pathclean.mask_for_session(store.session_dir(sid), cfg))
+    n = stats["kept"]
+    store.append_log(sid, f"Cleanup removed {stats['needles']:,} needle-shaped, {stats['faint']:,} "
+                          f"near-transparent and {stats['path_fragments']:,} camera-path fragment splats.")
+    store.append_log(sid, f"{n:,} splats written to {unity_ply} (metres, Unity left-handed Y-up).")
+    audit.record("export_created", sid, method="gaussian-splat", splats=stats,
+                 files=audit.files_summary([unity_ply]))
+    store.update(sid, status="complete", progress=None, mesh_zip=str(unity_ply), mesh_dir=str(out),
+                 message=f"Splat exported ({n:,} splats) — click download to save the .ply for Unity.")
