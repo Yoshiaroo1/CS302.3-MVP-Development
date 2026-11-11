@@ -3,6 +3,7 @@
 
 # Capture to NeRF (pc processing app)
 
+Needs a RTX GPU!
 Desktop app that turns a phone capture (`video.mp4` + `poses.jsonl` [+ `intrinsics.json`, `imu.json`])
 into a NerfStudio **splatfacto** Gaussian splat and exports a `.ply` for
 [UnityGaussianSplatting](https://github.com/aras-p/UnityGaussianSplatting)
